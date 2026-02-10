@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>酸素ボンベ残量・併用計算機</title>
+    <style>
+        :root {
+            --primary-color: #0056b3;
+            --accent-color: #d9534f;
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+        }
+        body { font-family: "Helvetica Neue", Arial, sans-serif; background-color: var(--bg-color); color: #333; margin: 0; padding: 10px; }
+        .container { max-width: 600px; margin: 0 auto; background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { font-size: 1.4rem; color: var(--primary-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 10px; margin-top: 0; }
+        h2 { font-size: 1.1rem; color: #444; margin-top: 20px; margin-bottom: 10px; border-left: 4px solid var(--primary-color); padding-left: 10px; }
+        
+        /* ボンベ入力エリア */
+        .cylinder-row { display: flex; gap: 10px; align-items: end; margin-bottom: 10px; padding: 10px; background: #f9f9f9; border-radius: 6px; border: 1px solid #eee; }
+        .input-group { flex: 1; }
+        .input-group label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: #666; }
+        .input-group select, .input-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .btn-remove { background: #ff4d4d; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; height: 38px; }
+        .btn-add { background: #28a745; color: white; border: none; padding: 10px; width: 100%; border-radius: 4px; cursor: pointer; font-size: 1rem; margin-bottom: 10px; }
+        
+        /* 機器設定エリア */
+        .device-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .device-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .device-title { font-weight: bold; font-size: 1rem; }
+        .toggle-switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--primary-color); }
+        input:checked + .slider:before { transform: translateX(26px); }
+        
+        .device-inputs { display: none; padding-top: 10px; border-top: 1px dashed #eee; }
+        .device-inputs.active { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+        /* 結果エリア */
+        .result-box { background: #eef2f5; padding: 20px; border-radius: 8px; text-align: center; border: 2px solid #ddd; }
+        .result-main { font-size: 2.5rem; font-weight: bold; color: var(--accent-color); margin: 10px 0; }
+        .result-details { display: flex; justify-content: space-around; font-size: 0.9rem; color: #555; }
+        .result-item strong { display: block; font-size: 1.2rem; color: #333; }
+        
+        .calc-btn { width: 100%; padding: 15px; background: var(--primary-color); color: white; font-size: 1.2rem; border: none; border-radius: 6px; cursor: pointer; margin-top: 10px; font-weight: bold; }
+        .calc-btn:hover { background: #004494; }
+        .note { font-size: 0.8rem; color: #888; text-align: right; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>酸素消費・残時間計算機</h1>
+
+    <h2>1. 酸素ボンベ (安全係数 0.8)</h2>
+    <div id="cylinder-container">
+        </div>
+    <button class="btn-add" onclick="addCylinder()">＋ ボンベを追加</button>
+    <div class="result-details" style="background:#fff; padding:5px;">
+        <div>合計ガス容量 (安全係数込): <span id="total-gas-display" style="font-weight:bold; color:#0056b3;">0</span> L</div>
+    </div>
+
+    <h2>2. 使用機器 (併用可)</h2>
+
+    <div class="device-card">
+        <div class="device-header">
+            <span class="device-title">人工呼吸器</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="vent-toggle" onchange="toggleDevice('vent')">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div id="vent-inputs" class="device-inputs">
+            <div class="input-group">
+                <label>FiO2 (%)</label>
+                <input type="number" id="vent-fio2" value="60" placeholder="例: 60">
+            </div>
+            <div class="input-group">
+                <label>分時換気量 (L/min)</label>
+                <input type="number" id="vent-mv" value="6.0" step="0.1" placeholder="例: 6.0">
+            </div>
+        </div>
+    </div>
+
+    <div class="device-card">
+        <div class="device-header">
+            <span class="device-title">ECMO (ECUMO)</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="ecmo-toggle" onchange="toggleDevice('ecmo')">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div id="ecmo-inputs" class="device-inputs">
+            <div class="input-group">
+                <label>FiO2 (%)</label>
+                <input type="number" id="ecmo-fio2" value="100" placeholder="例: 100">
+            </div>
+            <div class="input-group">
+                <label>酸素流量 (L/min)</label>
+                <input type="number" id="ecmo-flow" value="2.0" step="0.1" placeholder="例: 2.0">
+            </div>
+        </div>
+    </div>
+
+    <button class="calc-btn" onclick="calculate()">計算する</button>
+
+    <h2>計算結果</h2>
+    <div class="result-box">
+        <div style="font-size:1rem; margin-bottom:5px;">使用可能時間</div>
+        <div id="result-time" class="result-main">-- 分</div>
+        <hr style="border:0; border-top:1px solid #ccc; margin:15px 0;">
+        <div class="result-details">
+            <div class="result-item">
+                総ガス残量
+                <strong id="res-total-gas">- L</strong>
+            </div>
+            <div class="result-item">
+                総消費量
+                <strong id="res-total-flow">- L/min</strong>
+            </div>
+        </div>
+    </div>
+    <p class="note">※計算式: 消費量 = 流量 × (FiO2-21)/79 <br>※ボンベ残量は安全係数0.8を乗じて計算</p>
+</div>
+
+<script>
+    // ボンベの選択肢定義
+    const cylinderOptions = [
+        { val: "2.0", label: "2.0L (300L)" },
+        { val: "2.9", label: "2.9L (※特殊)" },
+        { val: "3.4", label: "3.4L (500L)" },
+        { val: "10.0", label: "10L (1500L)" },
+        { val: "46.7", label: "46.7L (7000L)" }
+    ];
+
+    // 初期化：ボンベを2つ追加しておく
+    window.onload = function() {
+        addCylinder(10.0); // 1本目: 10L
+        addCylinder(10.0); // 2本目: 10L
+    };
+
+    function addCylinder(defaultVol = 3.4) {
+        const container = document.getElementById('cylinder-container');
+        const div = document.createElement('div');
+        div.className = 'cylinder-row';
+        
+        let optionsHtml = '';
+        cylinderOptions.forEach(opt => {
+            const selected = (parseFloat(opt.val) === defaultVol) ? 'selected' : '';
+            optionsHtml += `<option value="${opt.val}" ${selected}>${opt.label}</option>`;
+        });
+
+        div.innerHTML = `
+            <div class="input-group" style="flex:2;">
+                <label>ボンベ容量</label>
+                <select class="cyl-vol">${optionsHtml}</select>
+            </div>
+            <div class="input-group">
+                <label>残圧(MPa)</label>
+                <input type="number" class="cyl-press" value="10" step="1">
+            </div>
+            <button class="btn-remove" onclick="this.parentElement.remove()">×</button>
+        `;
+        container.appendChild(div);
+    }
+
+    function toggleDevice(device) {
+        const checkbox = document.getElementById(device + '-toggle');
+        const inputs = document.getElementById(device + '-inputs');
+        if(checkbox.checked) {
+            inputs.classList.add('active');
+        } else {
+            inputs.classList.remove('active');
+        }
+    }
+
+    function calculate() {
+        // 1. ボンベ総容量の計算
+        let totalGas = 0;
+        const rows = document.querySelectorAll('.cylinder-row');
+        
+        rows.forEach(row => {
+            const vol = parseFloat(row.querySelector('.cyl-vol').value);
+            const press = parseFloat(row.querySelector('.cyl-press').value);
+            if(vol && press) {
+                // 内容積 × 圧力 × 10 × 安全係数0.8
+                totalGas += (vol * press * 10 * 0.8);
+            }
+        });
+
+        // 2. 消費量の計算
+        let totalConsumption = 0;
+
+        // 人工呼吸器
+        if(document.getElementById('vent-toggle').checked) {
+            const fio2 = parseFloat(document.getElementById('vent-fio2').value);
+            const mv = parseFloat(document.getElementById('vent-mv').value);
+            if(fio2 > 21 && mv > 0) {
+                totalConsumption += mv * (fio2 - 21) / 79;
+            }
+        }
+
+        // ECMO
+        if(document.getElementById('ecmo-toggle').checked) {
+            const fio2 = parseFloat(document.getElementById('ecmo-fio2').value);
+            const flow = parseFloat(document.getElementById('ecmo-flow').value);
+            if(fio2 > 21 && flow > 0) {
+                totalConsumption += flow * (fio2 - 21) / 79;
+            }
+        }
+
+        // 結果表示
+        document.getElementById('res-total-gas').innerText = totalGas.toFixed(1) + " L";
+        document.getElementById('total-gas-display').innerText = totalGas.toFixed(0);
+        document.getElementById('res-total-flow').innerText = totalConsumption.toFixed(2) + " L/min";
+
+        const timeElem = document.getElementById('result-time');
+        
+        if (totalConsumption <= 0) {
+            timeElem.innerText = "消費なし";
+            timeElem.style.color = "#333";
+            return;
+        }
+
+        const timeMin = totalGas / totalConsumption;
+        const hours = Math.floor(timeMin / 60);
+        const minutes = Math.floor(timeMin % 60);
+
+        if (hours > 0) {
+            timeElem.innerText = `${hours}時間 ${minutes}分`;
+        } else {
+            timeElem.innerText = `${minutes}分`;
+        }
+        
+        // 残り時間が30分切ったら赤くするアラート的な演出
+        if (timeMin < 30) {
+            timeElem.style.color = "#d9534f"; // 赤
+        } else {
+            timeElem.style.color = "#28a745"; // 緑
+        }
+    }
+</script>
+
+</body>
+</html>
